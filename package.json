@@ -108,7 +108,8 @@
       "@hugeicons/react-native@1.0.16": "patches/@hugeicons__react-native@1.0.16.patch",
       "mermaid@11.17.2": "patches/mermaid@11.17.2.patch",
       "@better-auth/api-key@1.7.18": "patches/@better-auth__api-key@1.7.18.patch",
-      "app-builder-lib@26.18.0": "patches/app-builder-lib@26.18.0.patch"
+      "app-builder-lib@26.18.0": "patches/app-builder-lib@26.18.0.patch",
+      "react-native-nitro-modules@0.37.1": "patches/react-native-nitro-modules@0.37.1.patch"
     }
   }
 }
