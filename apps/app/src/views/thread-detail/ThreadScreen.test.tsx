@@ -7,6 +7,7 @@ import {
   render,
   screen,
 } from "@testing-library/react";
+import { useImperativeHandle, type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PendingInteraction } from "@bb/domain";
 import type {
@@ -17,10 +18,14 @@ import { getPromptDraftAccessor } from "@/hooks/usePromptDraftStorage";
 import { makeThreadResponse } from "@/test/fixtures/thread-responses";
 import { conversationRow } from "@/test/fixtures/thread-timeline-rows";
 import { createQueryClientTestHarness } from "@/test/queryClientTestHarness";
-import type { ThreadDetailSentMessageEdit } from "./ThreadDetailPromptArea";
+import type {
+  ThreadDetailPromptArea,
+  ThreadDetailSentMessageEdit,
+} from "./ThreadDetailPromptArea";
 import { ThreadScreen, type ThreadScreenPresentation } from "./ThreadScreen";
 
 const mocks = vi.hoisted(() => ({
+  attachDroppedFiles: vi.fn(),
   editMessageMutateAsync: vi.fn(),
   pendingInteractions: [] as PendingInteraction[],
   promptAreaProps: [] as Array<Record<string, unknown>>,
@@ -83,8 +88,14 @@ vi.mock("@/components/thread/timeline", async (importOriginal) => {
 });
 
 vi.mock("./ThreadDetailPromptArea", () => ({
-  ThreadDetailPromptArea: (props: Record<string, unknown>) => {
-    mocks.promptAreaProps.push(props);
+  ThreadDetailPromptArea: (
+    props: ComponentProps<typeof ThreadDetailPromptArea>,
+  ) => {
+    mocks.promptAreaProps.push({ ...props });
+    useImperativeHandle(
+      props.threadFileDropRef,
+      () => mocks.attachDroppedFiles,
+    );
     return <div data-testid="prompt-area" />;
   },
 }));
@@ -221,6 +232,7 @@ function makePluginInteraction(): PendingInteraction {
 }
 
 beforeEach(() => {
+  mocks.attachDroppedFiles.mockClear();
   mocks.editMessageMutateAsync.mockReset();
   mocks.toastWarning.mockReset();
   mocks.pendingInteractions = [];
@@ -239,6 +251,56 @@ afterEach(() => {
 });
 
 describe("ThreadScreen", () => {
+  it.for([
+    { kind: "page" },
+    SIDE_CHAT_PRESENTATION,
+    { ...SIDE_CHAT_PRESENTATION, layout: "document" },
+  ] satisfies ThreadScreenPresentation[])(
+    "attaches a file dropped over the transcript in $kind ($layout)",
+    (presentation) => {
+      renderScreen(presentation);
+      const transcript = screen.getByRole("button", {
+        name: "Add selection to chat",
+      });
+      const photo = new File(["photo"], "photo.png", { type: "image/png" });
+      const dataTransfer = {
+        types: ["Files"],
+        files: [photo],
+        dropEffect: "none",
+      };
+
+      expect(fireEvent.dragOver(transcript, { dataTransfer })).toBe(false);
+      expect(dataTransfer.dropEffect).toBe("copy");
+      expect(fireEvent.drop(transcript, { dataTransfer })).toBe(false);
+      expect(mocks.attachDroppedFiles).toHaveBeenCalledExactlyOnceWith([photo]);
+    },
+  );
+
+  it("leaves text drags and drops handled by a nested composer alone", () => {
+    renderScreen({ kind: "page" });
+    const transcript = screen.getByRole("button", {
+      name: "Add selection to chat",
+    });
+    const textTransfer = { types: ["text/plain"], files: [] };
+    expect(fireEvent.dragOver(transcript, { dataTransfer: textTransfer })).toBe(
+      true,
+    );
+    expect(fireEvent.drop(transcript, { dataTransfer: textTransfer })).toBe(
+      true,
+    );
+
+    const composer = screen.getByTestId("prompt-area");
+    const handleNestedDrop = vi.fn((event: Event) => event.preventDefault());
+    composer.addEventListener("drop", handleNestedDrop);
+    const photo = new File(["photo"], "photo.png", { type: "image/png" });
+    fireEvent.drop(composer, {
+      dataTransfer: { types: ["Files"], files: [photo] },
+    });
+
+    expect(handleNestedDrop).toHaveBeenCalledTimes(1);
+    expect(mocks.attachDroppedFiles).not.toHaveBeenCalled();
+  });
+
   it("hands a plugin-rendered interaction to an embedded chat's composer", () => {
     mocks.pendingInteractions = [makePluginInteraction()];
     renderScreen(SIDE_CHAT_PRESENTATION);

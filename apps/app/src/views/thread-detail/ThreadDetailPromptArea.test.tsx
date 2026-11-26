@@ -29,7 +29,7 @@ import {
   makeThreadQueuedMessage as makeThreadQueuedMessageFixture,
   makeThreadWithRuntime as makeThreadWithRuntimeFixture,
 } from "@bb/test-helpers/domain-fixtures";
-import type { ComponentProps } from "react";
+import { createRef, type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LazyQueuedMessagesList } from "@/components/promptbox/banner/LazyQueuedMessagesList";
 import { workflowRow } from "@/test/fixtures/thread-timeline-rows";
@@ -139,6 +139,9 @@ interface RenderPromptAreaOptions {
   queuedMessageCount?: number;
   sentMessageEdit?: ThreadDetailSentMessageEdit;
   sessionOptions?: readonly ThreadTimelineSessionOption[] | null;
+  threadFileDropRef?: ComponentProps<
+    typeof ThreadDetailPromptArea
+  >["threadFileDropRef"];
   thread?: ThreadWithRuntime;
 }
 
@@ -155,6 +158,7 @@ function buildPromptAreaElement({
   queuedMessageCount = 0,
   sentMessageEdit,
   sessionOptions = null,
+  threadFileDropRef,
   thread = makeThread(),
 }: RenderPromptAreaOptions = {}) {
   return (
@@ -185,6 +189,7 @@ function buildPromptAreaElement({
         }}
         sentMessageEdit={sentMessageEdit}
         steerActiveThreadOnEnter={false}
+        threadFileDropRef={threadFileDropRef}
         thread={thread}
       />
     </QueryClientProvider>
@@ -614,6 +619,47 @@ describe("agent session options", () => {
 });
 
 describe("ThreadDetailPromptArea", () => {
+  it("uploads a photo from the thread pane into the draft without sending", async () => {
+    const threadFileDropRef = createRef<(files: File[]) => void>();
+    const photo = new File(["photo"], "photo.png", { type: "image/png" });
+    const uploaded = {
+      type: "localImage",
+      sourceProjectId: "proj_1",
+      path: "thread-storage/uploads/photo.png",
+      mimeType: photo.type,
+      name: photo.name,
+      sizeBytes: photo.size,
+    } satisfies PromptDraftAttachment;
+    mocks.uploadPromptAttachmentMutateAsync.mockResolvedValueOnce(uploaded);
+    const { rerender } = renderPromptArea({ threadFileDropRef });
+
+    await act(async () => {
+      threadFileDropRef.current?.([photo]);
+    });
+
+    expect(mocks.uploadPromptAttachmentMutateAsync).toHaveBeenCalledWith({
+      projectId: "proj_1",
+      file: photo,
+    });
+    expect(mocks.promptDraft.addAttachment).toHaveBeenCalledWith(uploaded);
+    expect(mocks.sendMessageMutateAsync).not.toHaveBeenCalled();
+
+    rerender(
+      buildPromptAreaElement({
+        threadFileDropRef,
+        pendingInteractions: [makePendingInteraction()],
+      }),
+    );
+    expect(threadFileDropRef.current).toBeNull();
+    rerender(
+      buildPromptAreaElement({
+        threadFileDropRef,
+        thread: makeThread({ archivedAt: 1 }),
+      }),
+    );
+    expect(threadFileDropRef.current).toBeNull();
+  });
+
   it("sends plugin data through the send endpoint while Enter queues", async () => {
     mocks.promptDraft.text = "Queue this with data";
     renderPromptArea({

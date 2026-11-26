@@ -5,6 +5,7 @@ import {
   useMemo,
   useRef,
   useState,
+  type DOMAttributes,
   type ReactNode,
 } from "react";
 import type { ExperimentalMessageActionSurface } from "@get-bb/plugin-sdk";
@@ -93,6 +94,11 @@ import type { SendMessageMutationLike } from "./threadDetailMutationTypes";
 const THREAD_DETAIL_COMPOSER_ID = "thread-detail-follow-up-composer";
 const EMPTY_CHILD_THREAD_ITEMS: readonly ChildThreadPendingAttentionSource[] =
   [];
+
+type ThreadFileDropHandlers = Pick<
+  DOMAttributes<HTMLDivElement>,
+  "onDragOver" | "onDrop"
+>;
 
 export type ThreadScreenPresentation =
   | { kind: "page" }
@@ -587,6 +593,32 @@ export function ThreadScreen({
     defaultAppSettings.steerActiveThreadOnEnter;
   const isPanelPresentation = presentation.kind !== "page";
   const selectionAddToChat = composer ? handleAddToChat : undefined;
+  const threadFileDropRef = useRef<((files: File[]) => void) | null>(null);
+  const fileDropHandlers: ThreadFileDropHandlers = {
+    onDragOver(event) {
+      if (
+        event.defaultPrevented ||
+        !threadFileDropRef.current ||
+        !event.dataTransfer.types.includes("Files")
+      ) {
+        return;
+      }
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+    },
+    onDrop(event) {
+      const attachFiles = threadFileDropRef.current;
+      if (
+        event.defaultPrevented ||
+        !attachFiles ||
+        !event.dataTransfer.files.length
+      ) {
+        return;
+      }
+      event.preventDefault();
+      attachFiles(Array.from(event.dataTransfer.files));
+    },
+  };
   const surface = (
     <SelectionAddToChatContext.Provider value={selectionAddToChat}>
       <MessageActionSurfaceProvider value={timelineHost.messageActionSurface}>
@@ -682,6 +714,7 @@ export function ThreadScreen({
       activeBackgroundCommands={timeline.activeBackgroundCommands}
       childThreadsSection={childThreadsSection}
       contextEnvironmentId={composer.contextEnvironmentId}
+      threadFileDropRef={threadFileDropRef}
       thread={thread}
     />
   ) : null;
@@ -691,6 +724,7 @@ export function ThreadScreen({
       return (
         <div
           data-thread-window=""
+          {...fileDropHandlers}
           className="flex h-full min-h-0 min-w-0 flex-col overflow-clip"
         >
           <TimelineViewportProvider
@@ -728,6 +762,7 @@ export function ThreadScreen({
       return (
         <WithoutThreadContextCard>
           <ThreadScreenPanelShell
+            fileDropHandlers={fileDropHandlers}
             presentation={presentation}
             promptArea={promptArea}
             surface={surface}
@@ -751,11 +786,13 @@ export function ThreadScreen({
 }
 
 function ThreadScreenPanelShell({
+  fileDropHandlers,
   presentation,
   promptArea,
   surface,
   threadId,
 }: {
+  fileDropHandlers: ThreadFileDropHandlers;
   presentation: Extract<ThreadScreenPresentation, { kind: "panel" }>;
   promptArea: ReactNode;
   surface: ReactNode;
@@ -775,6 +812,7 @@ function ThreadScreenPanelShell({
       <div
         key={threadId}
         data-thread-window=""
+        {...fileDropHandlers}
         data-surface-tone={tone}
         className={cn("flex min-w-0 flex-col", surfaceClassName)}
       >
@@ -794,6 +832,7 @@ function ThreadScreenPanelShell({
   return (
     <div
       data-thread-window=""
+      {...fileDropHandlers}
       data-surface-tone={tone}
       className="flex min-h-0 flex-1 flex-col"
     >

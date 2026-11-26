@@ -7,10 +7,12 @@ import {
   useCallback,
   useEffect,
   useEffectEvent,
+  useImperativeHandle,
   useLayoutEffect,
   useMemo,
   useRef,
   useState,
+  type Ref,
   type RefObject,
 } from "react";
 import { createPortal } from "react-dom";
@@ -230,6 +232,7 @@ interface ThreadDetailPromptAreaProps {
   sentMessageEdit?: ThreadDetailSentMessageEdit;
   steerActiveThreadOnEnter: boolean;
   composerFocusRequestKey: string | number;
+  threadFileDropRef?: Ref<(files: File[]) => void>;
   thread: ThreadWithRuntime;
 }
 
@@ -519,6 +522,7 @@ export function ThreadDetailPromptArea({
   sentMessageEdit,
   steerActiveThreadOnEnter,
   composerFocusRequestKey,
+  threadFileDropRef,
   thread,
 }: ThreadDetailPromptAreaProps) {
   const navigate = useImmediateRouteNavigate();
@@ -1117,6 +1121,11 @@ export function ThreadDetailPromptArea({
   const hasPendingInteraction = orderedPendingInteractions.length > 0;
   const shouldHideComposer =
     environmentGoneStatus !== null || thread.archivedAt !== null;
+  useImperativeHandle(
+    shouldHideComposer || hasPendingInteraction ? undefined : threadFileDropRef,
+    () => handleAttachBottomFiles,
+    [handleAttachBottomFiles],
+  );
   const {
     processingQueuedMessage: displayedProcessingQueuedMessage,
     queuedMessageActionPending,
